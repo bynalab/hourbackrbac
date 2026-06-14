@@ -1,0 +1,11 @@
+{
+  "extends": "./tsconfig.json",
+  "compilerOptions": {
+    "outDir": "./dist",
+    "rootDir": "./src",
+    "declaration": true,
+    "noEmit": false
+  },
+  "include": ["src/core/**/*", "src/nestjs/**/*"],
+  "exclude": ["src/react/**/*", "**/*.spec.ts", "**/__tests__/**"]
+}

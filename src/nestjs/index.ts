@@ -1,0 +1,25 @@
+export { UiResourceAccessModule } from './ui-resource-access.module';
+export { createResourceAccessController } from './controllers/resource-access.controller';
+export { createResourceAccessAdminController } from './controllers/resource-access-admin.controller';
+export { resolveOptions } from './options';
+export { ResourceAccessService } from './resource-access.service';
+export { ResourceAccessGuard, REQUIRE_RESOURCE_KEY } from './resource-access.guard';
+export { RequireResource } from './require-resource.decorator';
+export { ResourceAccessAdminGuard } from './resource-access-admin.guard';
+export { RequireAdminRoles } from './require-admin-roles.decorator';
+export { UserResourceOverride, ResourceOverrideEffect } from './entity/user-resource-override.entity';
+export {
+  BatchResourceAccessDto,
+  BatchResourceAccessItemDto,
+  ToggleResourceAccessDto,
+} from './dto/resource-access.dto';
+export {
+  RESOURCE_ACCESS_OPTIONS,
+  type ResourceAccessModuleOptions,
+} from './options';
+export type {
+  ResourceCatalogueConfig,
+  ResourceNode,
+  UserResourceAccessResponse,
+  MyResourceAccessResponse,
+} from '../core/types';

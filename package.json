@@ -1,0 +1,44 @@
+{
+  "name": "@apeiro/ui-resource-access",
+  "version": "0.1.0",
+  "description": "Portable RBAC v2 UI resource access — catalogue tree, overrides, guards (no CASL required)",
+  "private": true,
+  "main": "./dist/nestjs/index.js",
+  "types": "./dist/nestjs/index.d.ts",
+  "exports": {
+    ".": "./dist/nestjs/index.js",
+    "./core": "./dist/core/index.js",
+    "./nestjs": "./dist/nestjs/index.js",
+    "./react": "./src/react/index.ts"
+  },
+  "scripts": {
+    "build": "tsc -p tsconfig.build.json",
+    "test": "jest --config jest.config.js"
+  },
+  "peerDependencies": {
+    "@nestjs/common": "^11.0.0",
+    "@nestjs/core": "^11.0.0",
+    "@nestjs/swagger": "^11.0.0",
+    "@nestjs/typeorm": "^11.0.0",
+    "class-transformer": "^0.5.0",
+    "class-validator": "^0.14.0",
+    "react": ">=18",
+    "typeorm": "^0.3.0"
+  },
+  "devDependencies": {
+    "@nestjs/common": "^11.1.8",
+    "@nestjs/core": "^11.1.8",
+    "@nestjs/swagger": "^11.2.1",
+    "@nestjs/testing": "^11.1.9",
+    "@nestjs/typeorm": "^11.0.0",
+    "@types/jest": "^30.0.0",
+    "@types/react": "^19.0.0",
+    "class-transformer": "^0.5.1",
+    "class-validator": "^0.14.2",
+    "jest": "^30.0.0",
+    "react": "^19.2.0",
+    "ts-jest": "^29.4.6",
+    "typeorm": "^0.3.27",
+    "typescript": "^5.9.3"
+  }
+}

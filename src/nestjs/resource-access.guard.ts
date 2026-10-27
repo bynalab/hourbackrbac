@@ -33,8 +33,8 @@ export class ResourceAccessGuard implements CanActivate {
       throw new ForbiddenException('User not authenticated');
     }
 
-    const allowed = await this.resourceAccessService.canAccessResourceForUser(
-      user.id,
+    const allowed = await this.resourceAccessService.canAccessResourceForContext(
+      this.resourceAccessService.resolveContext(request),
       resourceId,
     );
 

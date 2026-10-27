@@ -52,12 +52,25 @@ export interface UserResourceAccessResponse {
     id: string;
     email: string;
     role: string;
+    roles?: string[];
   };
   tree: ResourceNode[];
   nodes: ResourceAccessNodeState[];
   allowed_resource_ids: string[];
+  tenantId?: string;
 }
 
 export interface MyResourceAccessResponse {
   allowed_resource_ids: string[];
+  /** Present when the host returns role metadata from /me */
+  roles?: string[];
+  isSuperAdmin?: boolean;
+}
+
+export interface ResourceAccessContext {
+  userId: string;
+  /** Optional tenant/org/clinic scope for overrides and role membership */
+  tenantId?: string;
+  /** Optional request hint; storage loads roles when omitted */
+  roles?: string[];
 }

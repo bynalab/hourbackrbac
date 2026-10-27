@@ -7,6 +7,7 @@ import {
   Param,
   Patch,
   Put,
+  Request,
   Type,
   UseGuards,
 } from '@nestjs/common';
@@ -39,8 +40,10 @@ export function createResourceAccessAdminController(
     @Get('users/:userId/resource-access')
     @HttpCode(HttpStatus.OK)
     @ApiOperation({ summary: 'Effective resource access for a user (admin editor)' })
-    getUserResourceAccess(@Param('userId') userId: string) {
-      return this.resourceAccessService.getUserResourceAccess(userId);
+    getUserResourceAccess(@Param('userId') userId: string, @Request() req: { user?: { id?: string; role?: string } }) {
+      return this.resourceAccessService.getUserResourceAccess(
+        this.resourceAccessService.targetContext(req, userId),
+      );
     }
 
     @Put('users/:userId/resource-access/batch')
@@ -49,8 +52,12 @@ export function createResourceAccessAdminController(
     batchUpdateResourceAccess(
       @Param('userId') userId: string,
       @Body() dto: BatchResourceAccessDto,
+      @Request() req: { user?: { id?: string; role?: string } },
     ) {
-      return this.resourceAccessService.batchUpdateOverrides(userId, dto.items);
+      return this.resourceAccessService.batchUpdateOverrides(
+        this.resourceAccessService.targetContext(req, userId),
+        dto.items,
+      );
     }
 
     @Patch('users/:userId/resource-access/toggle')
@@ -59,9 +66,10 @@ export function createResourceAccessAdminController(
     toggleResourceAccess(
       @Param('userId') userId: string,
       @Body() dto: ToggleResourceAccessDto,
+      @Request() req: { user?: { id?: string; role?: string } },
     ) {
       return this.resourceAccessService.toggleResourceAccess(
-        userId,
+        this.resourceAccessService.targetContext(req, userId),
         dto.resource_id,
         dto.allowed,
       );

@@ -3,11 +3,15 @@ import type { ResourceCatalogueConfig } from '../core/types';
 export interface ResourceAccessClientConfig {
   /** Base API URL including prefix, e.g. `http://localhost:4000/api` */
   getApiBaseUrl: () => string;
-  /** Auth headers for API calls, e.g. `{ 'X-User-Id': userId }` or `{ Authorization: 'Bearer ...' }` */
-  getAuthHeaders: () => Record<string, string>;
+  /** Optional auth headers (bearer, API keys). Omit for cookie/session apps. */
+  getAuthHeaders?: () => Record<string, string>;
   /** Path for current user's allowed ids (default `/resource-access/me`) */
   meEndpoint?: string;
-  /** Admin API paths — defaults match package Nest controllers under `admin/resource-access` */
+  /** Fetch credentials mode — use `include` for cookie/session auth */
+  credentials?: RequestCredentials;
+  /** Custom fetch implementation (testing, SSR wrappers) */
+  fetchImpl?: typeof fetch;
+  /** Admin API paths — defaults match package controllers under `admin/resource-access` */
   adminEndpoints?: {
     getUserAccess: (userId: string) => string;
     toggle: (userId: string) => string;

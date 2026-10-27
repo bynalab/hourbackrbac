@@ -55,12 +55,45 @@ export function getCatalogueForRole(
   role: string,
   config: ResourceCatalogueConfig,
 ): ResourceNode[] {
+  return getCatalogueForRoles([role], config);
+}
+
+/** Union of domain trees granted by any of the user's roles. */
+export function getCatalogueForRoles(
+  roles: string[],
+  config: ResourceCatalogueConfig,
+): ResourceNode[] {
   const { tree, role_domain_grants: roleDomainGrants } = config;
-  if (roleDomainGrants[role]?.includes('*')) {
+  if (roles.some((role) => roleDomainGrants[role]?.includes('*'))) {
     return tree;
   }
-  const granted = new Set(roleDomainGrants[role] ?? []);
+  const granted = new Set<string>();
+  for (const role of roles) {
+    for (const domainId of roleDomainGrants[role] ?? []) {
+      granted.add(domainId);
+    }
+  }
   return tree.filter((node) => granted.has(node.id));
+}
+
+export function getDescendantResourceIds(resourceId: string, tree: ResourceNode[]): string[] {
+  const flat = flattenResourceTree(tree);
+  const byId = new Map(flat.map((n) => [n.id, n]));
+  const result: string[] = [];
+
+  const collect = (id: string) => {
+    result.push(id);
+    for (const node of flat) {
+      if (node.parent_id === id) {
+        collect(node.id);
+      }
+    }
+  };
+
+  if (byId.has(resourceId)) {
+    collect(resourceId);
+  }
+  return result;
 }
 
 export function resolveResourceIdForPath(

@@ -1,5 +1,5 @@
 import type { Type, CanActivate } from '@nestjs/common';
-import type { ResourceCatalogueConfig } from '../core/types';
+import type { ResourceAccessContext, ResourceCatalogueConfig } from '../core/types';
 
 export const RESOURCE_ACCESS_OPTIONS = 'RESOURCE_ACCESS_OPTIONS';
 
@@ -18,11 +18,16 @@ export interface ResourceAccessModuleOptions {
   adminGuards?: Type<CanActivate>[];
   /**
    * Controller base path for admin CRUD.
-   * Default `admin/resource-access`. Kenya TNT uses `admin/rbac` for backward compatibility.
+   * Default `admin/resource-access`.
    */
   adminControllerPath?: string;
   /** Register HTTP controllers (default true) */
   registerControllers?: boolean;
+  /**
+   * Map the authenticated request to resource-access context (userId, tenantId, roles).
+   * Defaults to `{ userId: req.user.id, roles: [req.user.role] }`.
+   */
+  getContextFromRequest?: (request: { user?: { id?: string; role?: string } }) => ResourceAccessContext;
 }
 
 export interface ResourceAccessOptionsResolved extends ResourceAccessModuleOptions {

@@ -1,15 +1,47 @@
 {
-  "name": "@apeiro/ui-resource-access",
-  "version": "0.1.0",
-  "description": "Portable RBAC v2 UI resource access — catalogue tree, overrides, guards (no CASL required)",
-  "private": true,
+  "name": "@bynalab/ui-resource-access",
+  "version": "0.3.0",
+  "description": "Portable RBAC v2 UI resource access — catalogue tree, overrides, guards",
+  "private": false,
+  "publishConfig": {
+    "access": "public"
+  },
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/bynalab/hourbackrbac.git"
+  },
+  "files": [
+    "dist",
+    "migration",
+    "README.md"
+  ],
   "main": "./dist/nestjs/index.js",
   "types": "./dist/nestjs/index.d.ts",
   "exports": {
-    ".": "./dist/nestjs/index.js",
-    "./core": "./dist/core/index.js",
-    "./nestjs": "./dist/nestjs/index.js",
-    "./react": "./src/react/index.ts"
+    ".": {
+      "types": "./dist/nestjs/index.d.ts",
+      "default": "./dist/nestjs/index.js"
+    },
+    "./core": {
+      "types": "./dist/core/index.d.ts",
+      "default": "./dist/core/index.js"
+    },
+    "./nestjs": {
+      "types": "./dist/nestjs/index.d.ts",
+      "default": "./dist/nestjs/index.js"
+    },
+    "./react": {
+      "types": "./dist/react/index.d.ts",
+      "default": "./dist/react/index.js"
+    },
+    "./fastify": {
+      "types": "./dist/fastify/index.d.ts",
+      "default": "./dist/fastify/index.js"
+    },
+    "./server": {
+      "types": "./dist/server/index.d.ts",
+      "default": "./dist/server/index.js"
+    }
   },
   "scripts": {
     "build": "tsc -p tsconfig.build.json",
@@ -22,8 +54,21 @@
     "@nestjs/typeorm": "^11.0.0",
     "class-transformer": "^0.5.0",
     "class-validator": "^0.14.0",
+    "fastify": "^4.28.0 || ^5.0.0",
+    "pg": "^8.0.0",
     "react": ">=18",
     "typeorm": "^0.3.0"
+  },
+  "peerDependenciesMeta": {
+    "@nestjs/common": { "optional": true },
+    "@nestjs/core": { "optional": true },
+    "@nestjs/swagger": { "optional": true },
+    "@nestjs/typeorm": { "optional": true },
+    "class-transformer": { "optional": true },
+    "class-validator": { "optional": true },
+    "fastify": { "optional": true },
+    "pg": { "optional": true },
+    "typeorm": { "optional": true }
   },
   "devDependencies": {
     "@nestjs/common": "^11.1.8",
@@ -32,10 +77,13 @@
     "@nestjs/testing": "^11.1.9",
     "@nestjs/typeorm": "^11.0.0",
     "@types/jest": "^30.0.0",
+    "@types/pg": "^8.11.0",
     "@types/react": "^19.0.0",
     "class-transformer": "^0.5.1",
     "class-validator": "^0.14.2",
+    "fastify": "^5.6.0",
     "jest": "^30.0.0",
+    "pg": "^8.16.0",
     "react": "^19.2.0",
     "ts-jest": "^29.4.6",
     "typeorm": "^0.3.27",

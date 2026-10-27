@@ -1,164 +1,110 @@
-import { BadRequestException, Inject, Injectable, NotFoundException } from '@nestjs/common';
-import { Repository } from 'typeorm';
-import { flattenResourceTree, getCatalogueForRole } from '../core/catalogue';
 import {
-  buildNodeState,
-  canAccessResource,
-  roleDefaultAllows,
-} from '../core/resolve-access';
-import type {
-  MyResourceAccessResponse,
-  ResourceAccessNodeState,
-  UserResourceAccessResponse,
-} from '../core/types';
-import { ResourceOverrideEffect, UserResourceOverride } from './entity/user-resource-override.entity';
+  BadRequestException,
+  Inject,
+  Injectable,
+  NotFoundException,
+} from '@nestjs/common';
+import type { ResourceAccessContext } from '../core/types';
+import {
+  ResourceAccessService as CoreResourceAccessService,
+  ResourceAccessBadRequestError,
+  ResourceAccessNotFoundError,
+  type ResourceAccessNodeState,
+} from '../server';
+import { ResourceOverrideEffect } from '../server/types';
 import { RESOURCE_ACCESS_OPTIONS, type ResourceAccessOptionsResolved } from './options';
-
-interface UserRecord {
-  id: string;
-  email: string;
-  role: string;
-  is_deleted?: boolean;
-}
 
 @Injectable()
 export class ResourceAccessService {
   constructor(
+    private readonly inner: CoreResourceAccessService,
     @Inject(RESOURCE_ACCESS_OPTIONS)
     private readonly options: ResourceAccessOptionsResolved,
-    private readonly overrideRepository: Repository<UserResourceOverride>,
-    private readonly userRepository: Repository<UserRecord>,
   ) {}
 
-  getCatalogue() {
-    return { tree: this.options.catalogue.tree };
-  }
-
-  async getUserResourceAccess(userId: string): Promise<UserResourceAccessResponse> {
-    const user = await this.findUser(userId);
-    const overrides = await this.loadOverrideMap(userId);
-    const tree = getCatalogueForRole(user.role, this.options.catalogue);
-    const flat = flattenResourceTree(tree);
-    const nodes = flat.map((node) =>
-      buildNodeState(
-        user.role,
-        node,
-        overrides,
-        this.options.catalogue,
-        this.options.godModeRoles,
-      ),
-    );
+  resolveContext(request: { user?: { id?: string; role?: string } }): ResourceAccessContext {
+    if (this.options.getContextFromRequest) {
+      return this.options.getContextFromRequest(request);
+    }
+    if (!request.user?.id) {
+      throw new BadRequestException('User not authenticated');
+    }
     return {
-      user: { id: user.id, email: user.email, role: user.role },
-      tree,
-      nodes,
-      allowed_resource_ids: nodes.filter((n) => n.effective).map((n) => n.id),
+      userId: request.user.id,
+      roles: request.user.role ? [request.user.role] : undefined,
     };
   }
 
-  async getMyResourceAccess(userId: string): Promise<MyResourceAccessResponse> {
-    const { allowed_resource_ids } = await this.getUserResourceAccess(userId);
-    return { allowed_resource_ids };
+  targetContext(
+    request: { user?: { id?: string; role?: string } },
+    targetUserId: string,
+  ): ResourceAccessContext {
+    const base = this.resolveContext(request);
+    return {
+      userId: targetUserId,
+      tenantId: base.tenantId,
+    };
+  }
+
+  getCatalogue() {
+    return this.inner.getCatalogue();
+  }
+
+  getUserResourceAccess(userIdOrCtx: string | ResourceAccessContext) {
+    return this.mapErrors(() => this.inner.getUserResourceAccess(userIdOrCtx));
+  }
+
+  getMyResourceAccess(userIdOrCtx: string | ResourceAccessContext) {
+    return this.mapErrors(() => this.inner.getMyResourceAccess(userIdOrCtx));
   }
 
   canAccess(
     role: string,
     resourceId: string,
     overrides: Map<string, ResourceOverrideEffect>,
-  ): boolean {
-    return canAccessResource(
-      role,
-      resourceId,
-      overrides,
-      this.options.catalogue,
-      this.options.godModeRoles,
-    );
+  ) {
+    return this.inner.canAccess(role, resourceId, overrides);
   }
 
-  async canAccessResourceForUser(userId: string, resourceId: string): Promise<boolean> {
-    const user = await this.findUser(userId);
-    const overrides = await this.loadOverrideMap(userId);
-    return this.canAccess(user.role, resourceId, overrides);
+  canAccessResourceForContext(ctx: ResourceAccessContext, resourceId: string) {
+    return this.mapErrors(() => this.inner.canAccessResourceForContext(ctx, resourceId));
   }
 
-  async batchUpdateOverrides(
-    userId: string,
+  canAccessResourceForUser(userId: string, resourceId: string) {
+    return this.mapErrors(() => this.inner.canAccessResourceForUser(userId, resourceId));
+  }
+
+  batchUpdateOverrides(
+    userIdOrCtx: string | ResourceAccessContext,
     items: Array<{ resource_id: string; effect: ResourceOverrideEffect | null }>,
-  ): Promise<UserResourceAccessResponse> {
-    const user = await this.findUser(userId);
-    this.assertResourceAccessEditable(user);
-
-    for (const item of items) {
-      if (item.effect === null) {
-        await this.overrideRepository.delete({
-          user_id: userId,
-          resource_id: item.resource_id,
-        });
-        continue;
-      }
-
-      await this.overrideRepository.upsert(
-        {
-          user_id: userId,
-          resource_id: item.resource_id,
-          effect: item.effect,
-        },
-        ['user_id', 'resource_id'],
-      );
-    }
-
-    return this.getUserResourceAccess(userId);
+  ) {
+    return this.mapErrors(() => this.inner.batchUpdateOverrides(userIdOrCtx, items));
   }
 
-  async toggleResourceAccess(
-    userId: string,
+  toggleResourceAccess(
+    userIdOrCtx: string | ResourceAccessContext,
     resourceId: string,
     allowed: boolean,
-  ): Promise<UserResourceAccessResponse> {
-    const user = await this.findUser(userId);
-    this.assertResourceAccessEditable(user);
-    const overrides = await this.loadOverrideMap(userId);
-    const roleWouldGrant = roleDefaultAllows(
-      user.role,
-      resourceId,
-      this.options.catalogue,
-      this.options.godModeRoles,
-    );
-
-    let effect: ResourceOverrideEffect | null;
-    if (allowed) {
-      effect = roleWouldGrant ? null : ResourceOverrideEffect.ALLOW;
-    } else {
-      effect = ResourceOverrideEffect.DENY;
-    }
-
-    return this.batchUpdateOverrides(userId, [{ resource_id: resourceId, effect }]);
+  ) {
+    return this.mapErrors(() => this.inner.toggleResourceAccess(userIdOrCtx, resourceId, allowed));
   }
 
-  private assertResourceAccessEditable(user: UserRecord): void {
-    if (this.options.godModeRoles.includes(user.role)) {
-      throw new BadRequestException(
-        `Resource access overrides do not apply to ${user.role} users`,
-      );
-    }
+  getRolesForRequest(ctx: ResourceAccessContext) {
+    return this.inner.getRolesForContext(ctx);
   }
 
-  private async findUser(userId: string): Promise<UserRecord> {
-    const user = await this.userRepository.findOne({
-      where: { id: userId },
-      select: ['id', 'email', 'role', 'is_deleted'],
-    });
-    if (!user || user.is_deleted) {
-      throw new NotFoundException('User not found');
+  private async mapErrors<T>(fn: () => Promise<T>): Promise<T> {
+    try {
+      return await fn();
+    } catch (error) {
+      if (error instanceof ResourceAccessNotFoundError) {
+        throw new NotFoundException(error.message);
+      }
+      if (error instanceof ResourceAccessBadRequestError) {
+        throw new BadRequestException(error.message);
+      }
+      throw error;
     }
-    return user;
-  }
-
-  private async loadOverrideMap(
-    userId: string,
-  ): Promise<Map<string, ResourceOverrideEffect>> {
-    const rows = await this.overrideRepository.find({ where: { user_id: userId } });
-    return new Map(rows.map((r) => [r.resource_id, r.effect]));
   }
 }
 

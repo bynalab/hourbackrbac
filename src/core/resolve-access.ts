@@ -4,17 +4,39 @@ import type {
   ResourceAccessSource,
   ResourceCatalogueConfig,
   ResourceOverrideEffect,
-} from '../core/types';
+} from './types';
 import {
   flattenResourceTree,
-  getCatalogueForRole,
   getDomainIdForResource,
   getResourcePathIds,
   roleGrantsDomain,
-} from '../core/catalogue';
+} from './catalogue';
 
-export function buildNodeState(
-  role: string,
+function applyOverridePath(
+  pathIds: string[],
+  nodeId: string,
+  overrides: Map<string, ResourceOverrideEffect>,
+  roleEffective: boolean,
+): { effective: boolean; source: ResourceAccessSource } {
+  let effective = roleEffective;
+  let source: ResourceAccessSource = effective ? 'role' : 'inherited_deny';
+
+  for (const id of pathIds) {
+    const override = overrides.get(id);
+    if (override === 'deny') {
+      effective = false;
+      source = id === nodeId ? 'override_deny' : 'inherited_deny';
+    } else if (override === 'allow') {
+      effective = true;
+      source = id === nodeId ? 'override_allow' : 'override_allow';
+    }
+  }
+
+  return { effective, source };
+}
+
+export function buildNodeStateMultiRole(
+  roles: string[],
   node: FlatResourceNode,
   overrides: Map<string, ResourceOverrideEffect>,
   config: ResourceCatalogueConfig,
@@ -23,7 +45,7 @@ export function buildNodeState(
   const pathIds = getResourcePathIds(node.id, config.tree);
   const directOverride = overrides.get(node.id) ?? null;
 
-  if (godModeRoles.includes(role)) {
+  if (roles.some((role) => godModeRoles.includes(role))) {
     return {
       ...node,
       effective: true,
@@ -34,21 +56,16 @@ export function buildNodeState(
   }
 
   const domainId = getDomainIdForResource(node.id, config.tree);
-  let effective = domainId
-    ? roleGrantsDomain(role, domainId, config.role_domain_grants)
+  const roleEffective = domainId
+    ? roles.some((role) => roleGrantsDomain(role, domainId, config.role_domain_grants))
     : false;
-  let source: ResourceAccessSource = effective ? 'role' : 'inherited_deny';
 
-  for (const id of pathIds) {
-    const override = overrides.get(id);
-    if (override === 'deny') {
-      effective = false;
-      source = id === node.id ? 'override_deny' : 'inherited_deny';
-    } else if (override === 'allow') {
-      effective = true;
-      source = id === node.id ? 'override_allow' : 'override_allow';
-    }
-  }
+  const { effective, source } = applyOverridePath(
+    pathIds,
+    node.id,
+    overrides,
+    roleEffective,
+  );
 
   return {
     ...node,
@@ -59,18 +76,51 @@ export function buildNodeState(
   };
 }
 
+export function buildNodeState(
+  role: string,
+  node: FlatResourceNode,
+  overrides: Map<string, ResourceOverrideEffect>,
+  config: ResourceCatalogueConfig,
+  godModeRoles: string[],
+): ResourceAccessNodeState {
+  return buildNodeStateMultiRole([role], node, overrides, config, godModeRoles);
+}
+
+export function computeAllowedResourceIdsMultiRole(
+  roles: string[],
+  overrides: Map<string, ResourceOverrideEffect>,
+  config: ResourceCatalogueConfig,
+  godModeRoles: string[],
+): string[] {
+  const flat = flattenResourceTree(config.tree);
+  return flat
+    .map((node) => buildNodeStateMultiRole(roles, node, overrides, config, godModeRoles))
+    .filter((n) => n.effective)
+    .map((n) => n.id);
+}
+
 export function computeAllowedResourceIds(
   role: string,
   overrides: Map<string, ResourceOverrideEffect>,
   config: ResourceCatalogueConfig,
   godModeRoles: string[],
 ): string[] {
-  const tree = getCatalogueForRole(role, config);
-  const flat = flattenResourceTree(tree);
-  return flat
-    .map((node) => buildNodeState(role, node, overrides, config, godModeRoles))
-    .filter((n) => n.effective)
-    .map((n) => n.id);
+  return computeAllowedResourceIdsMultiRole([role], overrides, config, godModeRoles);
+}
+
+export function canAccessResourceMultiRole(
+  roles: string[],
+  resourceId: string,
+  overrides: Map<string, ResourceOverrideEffect>,
+  config: ResourceCatalogueConfig,
+  godModeRoles: string[],
+): boolean {
+  const flat = flattenResourceTree(config.tree);
+  const node = flat.find((n) => n.id === resourceId);
+  if (!node) {
+    return false;
+  }
+  return buildNodeStateMultiRole(roles, node, overrides, config, godModeRoles).effective;
 }
 
 export function canAccessResource(
@@ -80,13 +130,16 @@ export function canAccessResource(
   config: ResourceCatalogueConfig,
   godModeRoles: string[],
 ): boolean {
-  const tree = getCatalogueForRole(role, config);
-  const flat = flattenResourceTree(tree);
-  const node = flat.find((n) => n.id === resourceId);
-  if (!node) {
-    return false;
-  }
-  return buildNodeState(role, node, overrides, config, godModeRoles).effective;
+  return canAccessResourceMultiRole([role], resourceId, overrides, config, godModeRoles);
+}
+
+export function rolesDefaultAllow(
+  roles: string[],
+  resourceId: string,
+  config: ResourceCatalogueConfig,
+  godModeRoles: string[],
+): boolean {
+  return canAccessResourceMultiRole(roles, resourceId, new Map(), config, godModeRoles);
 }
 
 export function roleDefaultAllows(
@@ -95,5 +148,5 @@ export function roleDefaultAllows(
   config: ResourceCatalogueConfig,
   godModeRoles: string[],
 ): boolean {
-  return canAccessResource(role, resourceId, new Map(), config, godModeRoles);
+  return rolesDefaultAllow([role], resourceId, config, godModeRoles);
 }

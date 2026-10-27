@@ -8,35 +8,33 @@ import {
 import { Reflector } from '@nestjs/core';
 import { REQUIRE_ADMIN_ROLES_KEY } from './require-admin-roles.decorator';
 import { RESOURCE_ACCESS_OPTIONS, type ResourceAccessOptionsResolved } from './options';
+import { ResourceAccessService } from './resource-access.service';
 
-/** Simple role check for admin endpoints — no CASL dependency. */
+/** Simple role check for admin endpoints — supports multi-role via getContextFromRequest. */
 @Injectable()
 export class ResourceAccessAdminGuard implements CanActivate {
   constructor(
     private readonly reflector: Reflector,
     @Inject(RESOURCE_ACCESS_OPTIONS)
     private readonly options: ResourceAccessOptionsResolved,
+    private readonly resourceAccessService: ResourceAccessService,
   ) {}
 
-  canActivate(context: ExecutionContext): boolean {
+  async canActivate(context: ExecutionContext): Promise<boolean> {
     const metadataRoles = this.reflector.getAllAndOverride<string[]>(
       REQUIRE_ADMIN_ROLES_KEY,
       [context.getHandler(), context.getClass()],
     );
-    // @RequireAdminRoles() with no args sets [] — treat as "use module defaults"
     const requiredRoles =
       metadataRoles && metadataRoles.length > 0
         ? metadataRoles
         : this.options.adminRoles;
 
     const request = context.switchToHttp().getRequest();
-    const user = request.user;
+    const ctx = this.resourceAccessService.resolveContext(request);
+    const roles = await this.resourceAccessService.getRolesForRequest(ctx);
 
-    if (!user?.id) {
-      throw new ForbiddenException('User not authenticated');
-    }
-
-    if (!requiredRoles.includes(user.role)) {
+    if (!roles.some((role) => requiredRoles.includes(role))) {
       throw new ForbiddenException('Insufficient permissions');
     }
 

@@ -1,0 +1,251 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>Resource catalogue demo</title>
+  <style>
+    :root { font-family: ui-sans-serif, system-ui, sans-serif; color: #0f172a; background: #f1f5f9; }
+    * { box-sizing: border-box; }
+    body { margin: 0; }
+    header { padding: 1.1rem 1.4rem .4rem; }
+    header h1 { font-size: 1.2rem; margin: 0 0 .25rem; }
+    header p { margin: 0; color: #64748b; font-size: .92rem; }
+    .layout { display: grid; grid-template-columns: 1fr 1fr; gap: 1rem; padding: 1rem 1.4rem 2rem; }
+    @media (max-width: 640px) { .layout { grid-template-columns: 1fr; } }
+    .panel { background: white; border-radius: 14px; min-height: 420px; overflow: hidden; display: flex; flex-direction: column; }
+    .panel h2 { margin: 0; font-size: .78rem; letter-spacing: .04em; text-transform: uppercase; color: #64748b; }
+    .toolbar { display: flex; gap: .6rem; align-items: center; padding: .9rem 1rem; border-bottom: 1px solid #e2e8f0; }
+    .toolbar select { flex: 1; font: inherit; padding: .45rem .55rem; border-radius: 8px; border: 1px solid #cbd5e1; }
+    button { font: inherit; padding: .45rem .75rem; border-radius: 8px; border: 1px solid #2563eb; background: #2563eb; color: white; cursor: pointer; white-space: nowrap; }
+    button.ghost { background: white; color: #0f172a; border-color: #cbd5e1; }
+    button:disabled { opacity: .4; cursor: not-allowed; }
+    .body { padding: 1rem; flex: 1; }
+    .node-row { display: block; }
+    .node { display: inline-flex; align-items: center; gap: .4rem; padding: .15rem .1rem; cursor: pointer; width: max-content; }
+    .node input { width: 1rem; height: 1rem; flex: none; }
+    .muted { color: #94a3b8; font-size: .78rem; }
+    .app { display: flex; min-height: 320px; }
+    .sidebar { width: 160px; border-right: 1px solid #e2e8f0; padding: .6rem; background: #f8fafc; }
+    .sidebar button { display: block; width: 100%; text-align: left; background: transparent; color: #334155; border: 0; padding: .45rem .5rem; margin: 0 0 .15rem; }
+    .sidebar button.on { background: #dbeafe; color: #1d4ed8; }
+    .sidebar .off { color: #cbd5e1; pointer-events: none; }
+    .page { flex: 1; padding: 1rem; }
+    .page h3 { margin: 0 0 .75rem; }
+    .actions { display: flex; gap: .5rem; flex-wrap: wrap; }
+    .flash { margin-top: .8rem; font-weight: 600; font-size: .9rem; }
+    .ok { color: #15803d; }
+    .err { color: #b91c1c; }
+    .empty { color: #64748b; padding: 1.5rem 1rem; }
+  </style>
+</head>
+<body>
+  <header>
+    <h1>Catalogue access</h1>
+    <p>Check what a user can see, then log in as them. The tree is the catalogue; the right side is the app.</p>
+  </header>
+
+  <div class="layout">
+    <section class="panel">
+      <div class="toolbar">
+        <h2>Edit</h2>
+        <select id="editUser"></select>
+      </div>
+      <div class="body" id="tree"></div>
+    </section>
+
+    <section class="panel">
+      <div class="toolbar">
+        <h2>App</h2>
+        <span id="loggedAs" class="muted">Not logged in</span>
+        <button id="loginBtn" type="button">Log in as this user</button>
+      </div>
+      <div id="app" class="empty">Check boxes on the left, then log in.</div>
+    </section>
+  </div>
+
+  <script>
+    const EDITOR = 'admin-1';
+    let users = [];
+    let treeData = [];
+    let loggedIn = null;
+    let allowed = new Set();
+    let currentPage = '/reports';
+
+    const editUser = document.getElementById('editUser');
+    const treeEl = document.getElementById('tree');
+    const loginBtn = document.getElementById('loginBtn');
+    const loggedAs = document.getElementById('loggedAs');
+    const appEl = document.getElementById('app');
+
+    function editorHeaders() {
+      return { 'x-user-id': EDITOR, 'content-type': 'application/json' };
+    }
+    function userHeaders() {
+      return { 'x-user-id': loggedIn, 'content-type': 'application/json' };
+    }
+
+    async function api(path, { asEditor = false, ...opts } = {}) {
+      const res = await fetch(path, {
+        ...opts,
+        headers: { ...(asEditor ? editorHeaders() : userHeaders()), ...(opts.headers || {}) },
+      });
+      const body = await res.json().catch(() => ({}));
+      return { ok: res.ok, status: res.status, body };
+    }
+
+    function attachState(tree, nodes) {
+      const byId = new Map(nodes.map((n) => [n.id, n]));
+      const walk = (node) => ({
+        ...node,
+        state: byId.get(node.id),
+        children: (node.children || []).map(walk),
+      });
+      return tree.map(walk);
+    }
+
+    function renderTree(nodes, depth = 0) {
+      return nodes.map((node) => {
+        const on = Boolean(node.state?.effective);
+        return `
+          <div class="node-row" style="padding-left:${depth * 18}px">
+            <label class="node">
+              <input type="checkbox" data-id="${node.id}" ${on ? 'checked' : ''} />
+              <span>${node.label}</span>
+            </label>
+            <span class="muted">${node.type}</span>
+          </div>
+          ${node.children?.length ? renderTree(node.children, depth + 1) : ''}
+        `;
+      }).join('');
+    }
+
+    async function loadTree() {
+      const id = editUser.value;
+      const { ok, body } = await api(`/admin/resource-access/users/${id}/resource-access`, { asEditor: true });
+      if (!ok) {
+        treeEl.innerHTML = `<p class="err">Could not load tree (${body.message || ''})</p>`;
+        return;
+      }
+      treeData = attachState(body.tree, body.nodes);
+      treeEl.innerHTML = renderTree(treeData);
+      treeEl.querySelectorAll('input[type=checkbox]').forEach((box) => {
+        box.onchange = () => onToggle(box.dataset.id, box.checked);
+      });
+      loginBtn.textContent = `Log in as ${selectedName()}`;
+    }
+
+    async function onToggle(resourceId, allowedFlag) {
+      await api(`/admin/resource-access/users/${editUser.value}/resource-access/toggle`, {
+        asEditor: true,
+        method: 'PATCH',
+        body: JSON.stringify({ resource_id: resourceId, allowed: allowedFlag }),
+      });
+      await loadTree();
+      if (loggedIn === editUser.value) await loadApp();
+    }
+
+    function selectedName() {
+      return users.find((u) => u.id === editUser.value)?.name || editUser.value;
+    }
+
+    function pages() {
+      const out = [];
+      const walk = (nodes) => {
+        for (const n of nodes) {
+          if (n.path) out.push(n);
+          if (n.children) walk(n.children);
+        }
+      };
+      walk(treeData);
+      return out;
+    }
+
+    function blocksFor(page) {
+      return (page.children || []).filter((c) => c.type === 'block');
+    }
+
+    function actionFor(id) {
+      if (id === 'reports.export') return { path: '/reports/export', label: 'Export' };
+      if (id === 'items.create') return { path: '/items', label: 'Create item' };
+      if (id === 'items.delete') return { path: '/items/delete', label: 'Delete item' };
+      return null;
+    }
+
+    function renderApp() {
+      const name = users.find((u) => u.id === loggedIn)?.name || loggedIn;
+      loggedAs.textContent = `Logged in as ${name}`;
+      const nav = pages();
+      const page = nav.find((p) => p.path === currentPage) || nav[0];
+      currentPage = page?.path || currentPage;
+
+      const sidebar = nav.map((p) => {
+        const can = allowed.has(p.id);
+        const on = p.path === currentPage;
+        return `<button class="${can ? (on ? 'on' : '') : 'off'}" data-path="${p.path}" ${can ? '' : 'disabled'}>${p.label}</button>`;
+      }).join('');
+
+      if (!page || !allowed.has(page.id)) {
+        appEl.innerHTML = `<div class="app"><nav class="sidebar">${sidebar}</nav><div class="page empty">You cannot open this page.</div></div>`;
+        bindNav();
+        return;
+      }
+
+      const actions = blocksFor(page).map((b) => {
+        const act = actionFor(b.id);
+        if (!act) return '';
+        const can = allowed.has(b.id);
+        return `<button ${can ? '' : 'disabled'} data-action="${act.path}">${act.label}</button>`;
+      }).join('');
+
+      appEl.innerHTML = `
+        <div class="app">
+          <nav class="sidebar">${sidebar}</nav>
+          <div class="page">
+            <h3>${page.label}</h3>
+            <div class="actions">${actions || '<span class="muted">No actions on this page.</span>'}</div>
+            <div class="flash" id="flash"></div>
+          </div>
+        </div>`;
+      bindNav();
+      appEl.querySelectorAll('[data-action]').forEach((btn) => {
+        btn.onclick = () => runAction(btn.dataset.action);
+      });
+    }
+
+    function bindNav() {
+      appEl.querySelectorAll('.sidebar [data-path]').forEach((btn) => {
+        btn.onclick = () => { currentPage = btn.dataset.path; renderApp(); };
+      });
+    }
+
+    async function runAction(path) {
+      const r = await api(path, { method: 'POST', body: '{}' });
+      const flash = document.getElementById('flash');
+      if (!flash) return;
+      flash.className = 'flash ' + (r.ok ? 'ok' : 'err');
+      flash.textContent = r.ok ? r.body.message : 'Not allowed';
+    }
+
+    async function loadApp() {
+      if (!loggedIn) return;
+      const { ok, body } = await api('/resource-access/me');
+      allowed = new Set(ok ? body.allowed_resource_ids : []);
+      renderApp();
+    }
+
+    loginBtn.onclick = async () => {
+      loggedIn = editUser.value;
+      await loadApp();
+    };
+
+    editUser.onchange = loadTree;
+
+    (async () => {
+      users = (await api('/demo/users', { asEditor: true })).body;
+      editUser.innerHTML = users.map((u) => `<option value="${u.id}">${u.name} (${u.role})</option>`).join('');
+      await loadTree();
+    })();
+  </script>
+</body>
+</html>

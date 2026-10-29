@@ -45,7 +45,9 @@
   },
   "scripts": {
     "build": "tsc -p tsconfig.build.json",
-    "test": "jest --config jest.config.js"
+    "test": "jest --config jest.config.js",
+    "example": "node examples/simple/server.js",
+    "example:smoke": "node examples/simple/smoke.js"
   },
   "peerDependencies": {
     "@nestjs/common": "^11.0.0",

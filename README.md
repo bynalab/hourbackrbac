@@ -13,6 +13,13 @@ No CASL or Casbin required. You bring auth (JWT, session, etc.) and define the c
 npm install @bynalab/ui-resource-access@^0.3.0
 ```
 
+Demo: [`examples/simple`](examples/simple) — tick the catalogue tree, then log in as that user.
+
+```bash
+npm run build
+npm run example          # http://localhost:3456
+```
+
 ---
 
 ## How it works
